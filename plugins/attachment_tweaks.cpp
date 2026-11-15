@@ -1,5 +1,5 @@
 ﻿// Attachment Tweaks -- tools for any attachment, as plugins\mt_plugin_AttachmentTweaks.dll: per-section
-// light control and the placement clipboard. Works on vanilla attachments; MoreAttachments' parts carry
+// light control, the placement clipboard, decals on attachments and Cinematic-only light shadows (attachment_decals.hpp). Works on vanilla attachments; MoreAttachments' parts carry
 // the labelled sections it drives, and neither needs the other.
 //
 // An attachment can carry several light controls (MTLightControl, MTLightControl1,
@@ -85,6 +85,7 @@ static uintptr_t cCtl, cInter, cBtn, cList, cVeh, cInterior, cAttComp, cPC;
 static uintptr_t fHovered, fFocus, fToStr, textCDO, fRepOn, fRepColor, fIsVisible, gameplayCDO;
 static int oOn, oColor, oParams, pSize, pName, oBtnName, oInText, oRet, oHighlight, oListInters;
 static int oVehId, oBrake, oCold, oTrans, oHot, oInteriors, cTurn, cHead, cSiren, tGear, hRpm, iOn;
+static int oBlinkerLights = -1;
 static int oOwner, oParentComp, oSlot, oCompLights, oReverseLights, oIntensity, oPCPlayer, oPawn;
 static uintptr_t cPlace, widgetCDO, fCreate, fAddChild, fGetParent, fWidgetVisible, fToText, fSetText, fSetRich, fPadding, fUp, fDown, fChildIndex, fChildCount, fChildAt, fRemove, fSetVis;
 static int oPlaceOptions, oPlaceAttachment, oPlaceSave, oPlaceScale, oPlaceRows[7], oRowSpin, oSpinValue = -1, oBlock, oRich, pToIn, pToRet;
@@ -353,9 +354,27 @@ static void detach(Fitted& f, bool picking) {
     if (!f.detachLogged) { f.detachLogged = true; MT_LOG("%s: took %d light controls off the vehicle's list", f.key.c_str(), n); }
 }
 
+// Is one of the car's own lamps in this list (ReverseLights, BlinkerLights) visible and lit? -1: the car has none.
+static int carLampLit(uintptr_t v, int list) {
+    if (list < 0) return -1;
+    uintptr_t d = get<uintptr_t>(v + list); int n = get<int>(v + list + 8);
+    if (!d || n <= 0) return -1;
+    for (int i = 0; i < n && i < 8; i++) {
+        uintptr_t l = get<uintptr_t>(d + i * 8);
+        if (!l) continue;
+        unsigned char parms[16] = {0};
+        api->process_event(l, fIsVisible, parms);
+        if (parms[0] && get<float>(l + oIntensity) > 0) return 1;
+    }
+    return 0;
+}
+
 static bool follows(uintptr_t v, int mode, DWORD now) {
     uint8_t turn = get<uint8_t>(v + oCold + cTurn), head = get<uint8_t>(v + oCold + cHead);
-    bool phase = (now % 800) < 400;  // shortcut: own 0.8 s blink, not synced to the car's blinker clock
+    // The blink follows the car's own blinker lamps, as Slides' tow bed does, so a part blinks with the car;
+    // our own 0.8 s clock only for a car without blinker lamps.
+    bool phase = false;
+    if (turn) { int lit = carLampLit(v, oBlinkerLights); phase = lit >= 0 ? lit == 1 : (now % 800) < 400; }
     switch (mode) {
         case Headlight: return head >= 1;
         case HighBeam:  return head >= 2;
@@ -363,15 +382,8 @@ static bool follows(uintptr_t v, int mode, DWORD now) {
             // CurrentGear is a position in the gearbox's list (reverses, N, forwards),
             // not a signed gear, so mirror the car's own reverse lamps instead: a lamp
             // that is both visible and lit means the car is reversing.
-            uintptr_t d = get<uintptr_t>(v + oReverseLights); int n = get<int>(v + oReverseLights + 8);
-            bool on = false;
-            for (int i = 0; i < n && i < 8 && !on; i++) {
-                uintptr_t l = get<uintptr_t>(d + i * 8);
-                if (!l) continue;
-                unsigned char parms[16] = {0};
-                api->process_event(l, fIsVisible, parms);
-                on = parms[0] && get<float>(l + oIntensity) > 0;
-            }
+            int n = get<int>(v + oReverseLights + 8);
+            bool on = carLampLit(v, oReverseLights) == 1;
             static int last = -1;
             if (on != last) {
                 last = on;
@@ -594,6 +606,7 @@ static uintptr_t addTitle(uintptr_t window, uintptr_t box, const wchar_t* text) 
 }
 
 static Ref refOf(uintptr_t o) { return {o ? get<int>(o + L().obj_index) : 0, o}; }
+#include "attachment_decals.hpp"
 
 // The placement window is caught as it is built (its Construct), not on the next 2 s scan: the scan was the delay.
 static std::mutex builtLock;
@@ -766,6 +779,7 @@ static void tick(void*) {
         if (f.dirtyAt && now - f.dirtyAt > 1000) { writeCar(f); f.dirtyAt = 0; }
     }
     if (pending.kind && now - pending.at > 120000) pending = {};
+    extras::pass();
     tickPlacement();
 
     SHORT ms = GetAsyncKeyState(VK_LBUTTON), es = GetAsyncKeyState(VK_RETURN);
@@ -821,6 +835,7 @@ static bool resolve() {
     tGear = off(sTrans, "CurrentGear"); hRpm = off(sHot, "CurrentRPM"); iOn = off(cInterior, "bLightOn");
     oOwner = off(cActor, "Owner"); oParentComp = off(cActor, "ParentComponent"); oSlot = off(cAttComp, "Net_PartSlot");
     oCompLights = off(cAttComp, "LightControls");
+    oBlinkerLights = off(cVeh, "BlinkerLights");  // optional: without it, our own blink clock
 
     cPlace = api->find_object("Class", "AttachmentPlacementWidget", "/Script/MotorTown");
     uintptr_t cRow = api->find_object("Class", "SettingWidget", "/Script/MotorTown");
@@ -902,12 +917,13 @@ static DWORD WINAPI run(LPVOID) {
     MT_LOG("Attachment Tweaks loaded: placement clipboard, per-section toggle / mode / colour for labelled attachments");
     if (!api->wait_engine(INFINITE)) { MT_LOG("FAILED: no engine"); return 0; }
     if (!resolve()) { MT_LOG("FAILED: game layout changed -- plugin idle, lights behave as vanilla"); return 0; }
+    extras::resolve(cVeh);
     static const char* kConstruct[] = {"Construct"};
     if (cPlace) MT_LOG("placement window watch %s", api->watch_functions(kConstruct, 1, onBuilt, nullptr) ? "on" : "OFF -- scans only");
     CloseHandle(CreateThread(nullptr, 0, pump, nullptr, 0, nullptr));
     for (int pass = 0;; pass++) {
         if (pass % 60 == 0) {  // ~2 s: rescan buttons, menus and multi-light attachments
-            std::vector<Ref> b, l, pcs, pl;
+            std::vector<Ref> b, l, pcs, pl, vs;
             std::map<uintptr_t, std::vector<Ref>> ctls;
             std::map<uintptr_t, Ref> inters;
             for (int i = 0, n = api->num_objects(); i < n; i++) {
@@ -920,9 +936,10 @@ static DWORD WINAPI run(LPVOID) {
                 else if (api->is_a(k, cList)) l.push_back({i, o});
                 else if (api->is_a(k, cPC)) pcs.push_back({i, o});
                 else if (cPlace && api->is_a(k, cPlace)) pl.push_back({i, o});
+                else if (api->is_a(k, cVeh)) vs.push_back({i, o});
             }
             std::lock_guard<std::mutex> g(lock);
-            buttons.swap(b); lists.swap(l); controllers.swap(pcs); places.swap(pl);
+            buttons.swap(b); lists.swap(l); controllers.swap(pcs); places.swap(pl); extras::cars.swap(vs);
             for (auto it = fitted.begin(); it != fitted.end();) it = alive(it->second.actor) ? std::next(it) : fitted.erase(it);
             for (auto& [actor, cs] : ctls) {
                 if (cs.size() < 2 || fitted.count(actor) || !inters.count(actor)) continue;

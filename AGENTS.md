@@ -1,7 +1,7 @@
-# AGENTS.md -- More Attachments
+# AGENTS.md -- Attachment Tweaks
 
 A native Motor Town plugin: one DLL loaded by
-[Plugin Loader](https://github.com/qxZap/mt-plugin-loader). Source is `plugins/more_attachments.cpp`.
+[Plugin Loader](https://github.com/qxZap/mt-plugin-loader). Source is `plugins/attachment_tweaks.cpp`.
 `include/` is a copy of the loader's headers; refresh it from mt-plugin-loader when the
 api version changes.
 
@@ -28,4 +28,4 @@ folder is the check, so log what you need to see in game.
 
 ## This plugin
 
-Per-section light control for the More Attachments mod: each labelled section gets its own Toggle / Mode / Color, stored per vehicle and attachment slot. Attachments without labelled sections are left alone, and without this plugin the lines still work but drive every section at once. Runs where light state is authoritative: single player or the host.
+Per-section light control for any attachment (it was the More Attachments mod): each labelled section gets its own Toggle / Mode / Color, stored per vehicle and attachment slot. Attachments without labelled sections are left alone, and without this plugin the lines still work but drive every section at once. Runs where light state is authoritative: single player or the host.

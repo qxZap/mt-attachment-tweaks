@@ -1,16 +1,16 @@
 <p align="center">
-  <img src=".github/hero.png" alt="More Attachments" width="100%">
+  <img src=".github/hero.png" alt="Attachment Tweaks" width="100%">
 </p>
 
 # Attachment Tweaks (was More Attachments)
 
 Renamed 2026-11-09: the DLL is now `mt_plugin_AttachmentTweaks.dll`, settings `attachment_tweaks.ini`. It works on any attachment, not only More Attachments' parts.
 
-Plugin for More Attachments: per-section light control.
+Per-section light control on any attachment.
 
 Each labelled light section on an attachment gets its own Toggle, Mode and Color, stored per vehicle and slot.
 
-Settings: `Binaries\Win64\plugins\more_attachments.ini`.
+Settings: `Binaries\Win64\pluginsttachment_tweaks.ini`.
 
 ## Install
 
