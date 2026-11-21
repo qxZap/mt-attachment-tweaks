@@ -908,6 +908,7 @@ static bool resolve() {
 // and queuing from the scanning thread stalled the tick for that long each time.
 static DWORD WINAPI pump(LPVOID) {
     for (;;) {
+        if (api->stopping()) return 0;   // the game is closing: this thread ends with it
         if (api->game_thread_ready()) api->run_on_game_thread(tick, nullptr);
         Sleep(33);
     }
